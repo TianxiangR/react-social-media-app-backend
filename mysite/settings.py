@@ -19,7 +19,10 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env file is it exists
-if os.path.exists(BASE_DIR / '.env.local'):
+if os.path.exists(BASE_DIR / '.env.prod'):
+    load_dotenv(dotenv_path=BASE_DIR / '.env.prod')
+
+elif os.path.exists(BASE_DIR / '.env.local'):
     load_dotenv(dotenv_path=BASE_DIR / '.env.local')
 
 
