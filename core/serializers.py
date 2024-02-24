@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
-from .models import Post, User, PostImage, PostLike
+from .models import Post, User, PostImage, PostLike, Bookmark, Notification
 from typing import *
 
 class UserSerializer(serializers.ModelSerializer):
@@ -30,6 +30,25 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'name', 'date_of_birth', 'created_at', 'profile_image']
+        
+class UserProfileSerializer(serializers.ModelSerializer):
+    followers = serializers.SerializerMethodField()
+    following = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'name', 'date_of_birth', 'created_at', 'profile_image', 'bio', 'location', 'followers', 'following', 'website', 'header_photo', 'is_following']
+        
+    def get_followers(self, obj) -> int:
+        return obj.followers.count()
+    
+    def get_following(self, obj) -> int:
+        return obj.following.count()
+    
+    def get_is_following(self, obj) -> bool:
+        return obj.followers.filter(follower=self.context['request'].user).exists()
+
 
 class PublicUserSerializer(serializers.Serializer):
     id = serializers.UUIDField()
@@ -60,7 +79,7 @@ class PostSerializer(serializers.ModelSerializer):
 
 class PostPreviewSerializer(serializers.Serializer):
     id = serializers.UUIDField()
-    author = PublicUserSerializer()
+    author = UserProfileSerializer()
     content = serializers.CharField()
     created_at = serializers.DateTimeField()
     images = serializers.SerializerMethodField()
@@ -92,20 +111,67 @@ class PostPreviewSerializer(serializers.Serializer):
         return 0
     
     def get_bookmarked(self, obj) -> bool:
-        return obj.bookmarks.filter(id=self.context['request'].user.id).exists()
+        return obj.bookmarks.filter(user=self.context['request'].user.id).exists()
+    
+class AugmentedPostPreviewSerializer(PostPreviewSerializer):
+    repost_parent = PostPreviewSerializer()
+    reply_parent = PostPreviewSerializer()
     
     
-class PostLikeSerializer(serializers.ModelSerializer):
+class PostLikeModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = PostLike
         fields = '__all__'
         
 
-class PostDetailSerializer(PostPreviewSerializer):
+class PostDetailSerializer(AugmentedPostPreviewSerializer):
     replies = serializers.SerializerMethodField()
     
     def get_replies(self, obj):
         replies = obj.replies.all()
-        print(replies)
         serializer = PostPreviewSerializer(replies, many=True, context=self.context)
         return serializer.data
+    
+class BookmarkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bookmark
+        fields = '__all__'
+
+
+class PostLikeSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    created_at = serializers.DateTimeField()
+    post = AugmentedPostPreviewSerializer()
+    user = UserProfileSerializer()
+
+
+class NotificationModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = '__all__'
+        
+class NotificationSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    created_at = serializers.DateTimeField()
+    type = serializers.CharField()
+    data = serializers.SerializerMethodField()
+    read = serializers.BooleanField()
+    
+    def get_data(self, obj):
+        if obj.type == 'like':
+            serializer = PostLikeSerializer(obj.like, context=self.context)
+            return serializer.data
+        elif obj.type == 'reply':
+            post = obj.reply
+            serializer = AugmentedPostPreviewSerializer(post, context=self.context)
+            return serializer.data
+        elif obj.type == 'repost':
+            post = obj.repost
+            serializer = AugmentedPostPreviewSerializer(post, context=self.context)
+            return serializer.data
+        elif obj.type == 'follow':
+            follow = obj.follow
+            serializer = UserProfileSerializer(follow.follower, context=self.context)
+            return serializer.data
+        else:
+            return None

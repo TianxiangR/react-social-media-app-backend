@@ -159,6 +159,10 @@ REST_FRAMEWORK = {
 }
 
 MEDIA_ROOT = BASE_DIR / 'media'
+
+if not os.path.exists(BASE_DIR / '.env.local'):
+    MEDIA_ROOT = '/home/ubuntu/media'
+
 MEDIA_URL = '/media/'
 
 AUTH_USER_MODEL = 'core.User'
