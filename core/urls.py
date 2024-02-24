@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import auth_views, user_views, post_views, search_views, notification_views
+from .views import auth_views, user_views, post_views, search_views, notification_views, debug_views
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 urlpatterns = [
@@ -21,4 +21,5 @@ urlpatterns = [
     path('search/', search_views.SearchAPIView.as_view()),
     path('notifications/', notification_views.NotificationView.as_view()),
     path('bookmarks/', post_views.BookmarkListView.as_view()),
+    path('debug/', debug_views.DebugView.as_view()),
 ]
