@@ -175,3 +175,4 @@ class NotificationSerializer(serializers.Serializer):
             return serializer.data
         else:
             return None
+        

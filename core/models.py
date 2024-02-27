@@ -38,7 +38,7 @@ class Post(models.Model):
         ordering = ['-created_at']
         
     def __str__(self):
-        return self.content[:20]
+        return self.content[:20].replace('\n', ' ')
 
 
 class PostImage(models.Model):
@@ -114,3 +114,9 @@ class Notification(models.Model):
             models.CheckConstraint(check=(models.Q(type='like') & models.Q(like__isnull=False)) | (models.Q(type='reply') & models.Q(reply__isnull=False)) | (models.Q(type='repost') & models.Q(repost__isnull=False)) | (models.Q(type='follow') & models.Q(follow__isnull=False)), name='notification_type_check') 
         ]
         ordering = ['-created_at']
+        
+
+class VisitRecord(models.Model):
+    visitor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='visits')
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='visits')
+    created_at = models.DateTimeField(auto_now_add=True)
