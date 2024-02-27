@@ -4,7 +4,6 @@ import uuid
 from django.db import migrations, models
 
 def gen_uuid(apps, schema_editor):
-    print("gen_uuid")
     MyModel = apps.get_model("core", "User")
     for row in MyModel.objects.all():
         row.uuid = uuid.uuid4()

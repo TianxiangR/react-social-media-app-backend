@@ -22,4 +22,5 @@ urlpatterns = [
     path('notifications/', notification_views.NotificationView.as_view()),
     path('bookmarks/', post_views.BookmarkListView.as_view()),
     path('debug/', debug_views.DebugView.as_view()),
+    path('top-rated/', post_views.TopRatedPostListView.as_view()),
 ]
