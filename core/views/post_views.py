@@ -9,7 +9,7 @@ from ..serializers import PostSerializer, PostPreviewSerializer, PostLikeModelSe
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
-from ..utils import add_visit_record, get_page_response, is_valid_utc_timestamp
+from ..utils import add_visit_record, get_page_response, is_valid_utc_timestamp, sort_posts_by_rating
 from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import datetime
@@ -63,7 +63,6 @@ class UserPostsView(GenericAPIView):
   def get(self, request, username):
       author = get_object_or_404(User, username=username)
       timestamp_str = request.query_params.get('timestamp', None)
-      print(timestamp_str)
       if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
         return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
       timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
@@ -111,7 +110,6 @@ class UserMediaView(GenericAPIView):
       timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
       page = request.query_params.get('page', 1)
       post_images = PostImage.objects.filter(post__author=author).filter(post__created_at__lte=timestamp).order_by('-post__created_at')
-      print('here')
       paginator = Paginator(post_images, 30)
       current_page = paginator.get_page(page)
       images = [request.build_absolute_uri(image.image.url) for image in current_page.object_list]
@@ -321,5 +319,22 @@ class PostRepostView(GenericAPIView):
       serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
       
       return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    
+class TopRatedPostListView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  
+  def get(self, request):
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      posts = Post.objects.filter(created_at__lte=timestamp)
+      posts = sort_posts_by_rating(posts)
+      paginator = Paginator(posts, 20)
+      response = get_page_response(paginator.page(page), request, AugmentedPostPreviewSerializer)
+      return Response(response, status=status.HTTP_200_OK)
     
       

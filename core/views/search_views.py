@@ -9,7 +9,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
 from django.utils import timezone
 from datetime import datetime
-from ..utils import is_valid_utc_timestamp, get_page_response
+from ..utils import is_valid_utc_timestamp, get_page_response, sort_posts_by_rating
 from django.core.paginator import Paginator
 
 
@@ -27,7 +27,6 @@ class SearchAPIView(GenericAPIView):
     page = request.query_params.get('page', 1)
     
     empty_response = get_page_response(Paginator([], 1).page(1), request)
-    print(request.query_params)
     
     if query_type == None:
       return Response({
@@ -39,6 +38,7 @@ class SearchAPIView(GenericAPIView):
         return Response(empty_response, status=status.HTTP_200_OK)
       # Search post by post content
       filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query)).filter(created_at__lte=timestamp)
+      filtered_posts = sort_posts_by_rating(filtered_posts)
       paginator = Paginator(filtered_posts, 20)
       page = paginator.page(page)
       response_body = get_page_response(page, request, AugmentedPostPreviewSerializer)
@@ -67,7 +67,7 @@ class SearchAPIView(GenericAPIView):
       paginator = Paginator(filtered_users, 20)
       page = paginator.page(page)
       response_body = get_page_response(page, request, UserProfileSerializer)
-      return Response(response_body, status=status.HTTP_200_OK)
+      return Response(response_body, status=status.HTTP_200_OK)   
       
     elif query_type == 'media':
       if query is None or len(query) == 0:

@@ -9,7 +9,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'password', 'email', 'name', 'date_of_birth', 'created_at', 'profile_image']
     
     def create(self, validated_data):
-        print(validated_data)
         user = User.objects.create_user(
             username=validated_data['username'],
             password=validated_data['password'],
@@ -62,7 +61,6 @@ class PublicQueryUserSerializer(serializers.Serializer):
     
     def validate(self, data):
         data = super().validate(data)
-        print(data)
         if 'email' not in data:
             raise serializers.ValidationError({'email': 'This field is required'})
         return data
