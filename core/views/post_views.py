@@ -3,11 +3,16 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from core.models import PostImage, Post, User, PostImage, Bookmark, Notification
-from ..serializers import PostSerializer, PostPreviewSerializer, PostLikeModelSerializer, PostDetailSerializer, AugmentedPostPreviewSerializer, BookmarkSerializer, NotificationModelSerializer
+from ..serializers import PostSerializer, PostPreviewSerializer, PostLikeModelSerializer, \
+  PostDetailSerializer, AugmentedPostPreviewSerializer, BookmarkSerializer, \
+  NotificationModelSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
-
+from ..utils import add_visit_record, get_page_response, is_valid_utc_timestamp
+from django.utils import timezone
+from django.core.paginator import Paginator
+from datetime import datetime
 
 class PostView(GenericAPIView):
   permission_classes = [IsAuthenticated]
@@ -37,9 +42,16 @@ class PostView(GenericAPIView):
       return Response(serializer.data, status=status.HTTP_201_CREATED)
   
   def get(self, request):
-      posts = Post.objects.filter(Q(author__followers__follower=request.user) | Q(author=request.user)).order_by('-created_at')
-      serializer = AugmentedPostPreviewSerializer(posts, many=True, context={'request': request})
-      return Response(serializer.data, status=status.HTTP_200_OK)
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(float(timestamp_str)):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      posts = Post.objects.filter(Q(author__followers__follower=request.user) | Q(author=request.user)).order_by('-created_at').filter(created_at__lte=timestamp)
+      paginator = Paginator(posts, 20)
+      current_page = paginator.get_page(page)
+      response = get_page_response(current_page, request, AugmentedPostPreviewSerializer)
+      return Response(response, status=status.HTTP_200_OK)
     
     
 class UserPostsView(GenericAPIView):
@@ -50,23 +62,39 @@ class UserPostsView(GenericAPIView):
   
   def get(self, request, username):
       author = get_object_or_404(User, username=username)
-      posts = Post.objects.filter(author=author)
-      serializer = self.serializer_class(posts, many=True, context={'request': request})
-      return Response(serializer.data, status=status.HTTP_200_OK)
+      timestamp_str = request.query_params.get('timestamp', None)
+      print(timestamp_str)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      posts = Post.objects.filter(author=author).filter(created_at__lte=timestamp).order_by('-created_at')
+      paginator = Paginator(posts, 20)
+      current_page = paginator.get_page(page)
+      response = get_page_response(current_page, request, self.serializer_class)
+      return Response(response, status=status.HTTP_200_OK)
     
 
 class UserLikedPostsView(GenericAPIView):
   permission_classes = [IsAuthenticated]
   authentication_classes = [JWTAuthentication]
-  serializer_class = PostPreviewSerializer
+  serializer_class = AugmentedPostPreviewSerializer
   lookup_url_kwarg = 'username'
   
   def get(self, request, username):
       author = get_object_or_404(User, username=username)
       likes = author.likes.all().order_by('-created_at')
       posts = [like.post for like in likes]
-      serializer = self.serializer_class(posts, many=True, context={'request': request})
-      return Response(serializer.data, status=status.HTTP_200_OK)
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      filtered_posts = list(filter(lambda post: post.created_at <= timestamp, posts))
+      paginator = Paginator(filtered_posts, 20)
+      current_page = paginator.get_page(page)
+      response = get_page_response(current_page, request, self.serializer_class)
+      return Response(response, status=status.HTTP_200_OK)
     
 
 class UserMediaView(GenericAPIView):
@@ -77,11 +105,23 @@ class UserMediaView(GenericAPIView):
   
   def get(self, request, username):
       author = get_object_or_404(User, username=username)
-      post_images = PostImage.objects.filter(post__author=author)
-      images = [request.build_absolute_uri(image.image.url) for image in reversed(post_images)]
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      post_images = PostImage.objects.filter(post__author=author).filter(post__created_at__lte=timestamp).order_by('-post__created_at')
+      print('here')
+      paginator = Paginator(post_images, 30)
+      current_page = paginator.get_page(page)
+      images = [request.build_absolute_uri(image.image.url) for image in current_page.object_list]
       
       response = {
-        'images': images
+        'count': paginator.count,
+        'next': current_page.next_page_number() if current_page.has_next() else None,
+        'previous': current_page.previous_page_number() if current_page.has_previous() else None,
+        'results': images,
+        'total_pages': paginator.num_pages,
       }
       
       return Response(response, status=status.HTTP_200_OK)
@@ -96,6 +136,7 @@ class PostDetailView(GenericAPIView):
   def get(self, request, postId):
       post = self.get_object()
       serializer = PostDetailSerializer(post, context={'request': request})
+      add_visit_record(request.user, post)
       return Response(serializer.data, status=status.HTTP_200_OK)
     
   def delete(self, request, postId):
@@ -130,7 +171,7 @@ class PostLikeView(GenericAPIView):
         noti_serializer = NotificationModelSerializer(data=notification)
         noti_serializer.is_valid(raise_exception=True)
         noti_serializer.save()
-      
+      add_visit_record(request.user, post)
       serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
       return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -160,7 +201,7 @@ class PostBookmarkView(GenericAPIView):
       serializer = BookmarkSerializer(data={'user': request.user.id, 'post': post.id})
       serializer.is_valid(raise_exception=True)
       serializer.save()
-      
+      add_visit_record(request.user, post)
       serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
       return Response(serializer.data, status=status.HTTP_201_CREATED)
     
@@ -180,9 +221,16 @@ class BookmarkListView(GenericAPIView):
   authentication_classes = [JWTAuthentication]
   
   def get(self, request):
-      bookmarks = Bookmark.objects.filter(user=request.user).order_by('-created_at')
-      serializer = AugmentedPostPreviewSerializer([bookmark.post for bookmark in bookmarks], many=True, context={'request': request})
-      return Response(serializer.data, status=status.HTTP_200_OK)
+      page = request.query_params.get('page', 1)
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      bookmarks = Bookmark.objects.filter(user=request.user).filter(post__created_at__lte=timestamp).order_by('-post__created_at')
+      posts = [bookmark.post for bookmark in bookmarks]
+      paginator = Paginator(posts, 20)
+      response = get_page_response(paginator.get_page(page), request, AugmentedPostPreviewSerializer)
+      return Response(response, status=status.HTTP_200_OK)
 
 
 class PostReplyView(GenericAPIView):
@@ -224,7 +272,7 @@ class PostReplyView(GenericAPIView):
         noti_serializer = NotificationModelSerializer(data=notification)
         noti_serializer.is_valid(raise_exception=True)
         noti_serializer.save()
-      
+      add_visit_record(request.user, parent_post)
       serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
       
       return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -269,7 +317,7 @@ class PostRepostView(GenericAPIView):
         noti_serializer.is_valid(raise_exception=True)
         noti_serializer.save()
       
-      
+      add_visit_record(request.user, parent_post)
       serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
       
       return Response(serializer.data, status=status.HTTP_201_CREATED)

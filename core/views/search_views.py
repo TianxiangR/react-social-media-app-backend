@@ -7,6 +7,10 @@ from ..serializers import AugmentedPostPreviewSerializer, UserProfileSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
+from django.utils import timezone
+from datetime import datetime
+from ..utils import is_valid_utc_timestamp, get_page_response
+from django.core.paginator import Paginator
 
 
 class SearchAPIView(GenericAPIView):
@@ -16,6 +20,14 @@ class SearchAPIView(GenericAPIView):
   def get(self, request, *args, **kwargs):
     query = request.query_params.get('q', None)
     query_type = request.query_params.get('type', None)
+    timestamp_str = request.query_params.get('timestamp', None)
+    if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+      return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+    timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+    page = request.query_params.get('page', 1)
+    
+    empty_response = get_page_response(Paginator([], 1).page(1), request)
+    print(request.query_params)
     
     if query_type == None:
       return Response({
@@ -24,64 +36,45 @@ class SearchAPIView(GenericAPIView):
     
     if query_type == 'top':
       if query is None or len(query) == 0:
-        return Response({
-          "users": [],
-          "posts": [],
-        }, status=status.HTTP_200_OK)
-      
-      # Search user by name and username
-      filtered_users = User.objects.filter(is_staff=False).filter(
-        Q(username__icontains=query) | Q(name__icontains=query)
-      )[:3]
-      
+        return Response(empty_response, status=status.HTTP_200_OK)
       # Search post by post content
-      filtered_posts = Post.objects.filter(content__icontains=query)[:20]
+      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query)).filter(created_at__lte=timestamp)
+      paginator = Paginator(filtered_posts, 20)
+      page = paginator.page(page)
+      response_body = get_page_response(page, request, AugmentedPostPreviewSerializer)
       
-      user_serializer = UserProfileSerializer(filtered_users, many=True, context={'request': request})
-      post_serializer = AugmentedPostPreviewSerializer(filtered_posts, many=True, context={'request': request})
-      
-      return Response({
-        "users": user_serializer.data,
-        "posts": post_serializer.data
-      }, status=status.HTTP_200_OK)
+      return Response(response_body, status=status.HTTP_200_OK)
     
     elif query_type == 'latest':
       if query is None or len(query) == 0:
-        return Response({
-          "posts": [],
-        }, status=status.HTTP_200_OK)
-      
+        return Response(empty_response, status=status.HTTP_200_OK)
       # Search post by post content
-      filtered_posts = Post.objects.filter(content__icontains=query)[:20]
-      post_serializer = AugmentedPostPreviewSerializer(filtered_posts, many=True, context={'request': request})
-      return Response({
-        "posts": post_serializer.data
-      }, status=status.HTTP_200_OK)
+      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query)).filter(created_at__lte=timestamp)
+      paginator = Paginator(filtered_posts, 20)
+      page = paginator.page(page)
+      response_body = get_page_response(page, request, AugmentedPostPreviewSerializer)
+      return Response(response_body, status=status.HTTP_200_OK)
     
     elif query_type == 'people':
       if query is None or len(query) == 0:
-        return Response({
-          "users": []
-        }, status=status.HTTP_200_OK)
+        return Response(empty_response, status=status.HTTP_200_OK)
       
       # Search user by name and username
       filtered_users = User.objects.filter(is_staff=False).filter(
         Q(username__icontains=query) | Q(name__icontains=query)
-      )[:20]
+      ).filter(created_at__lte=timestamp)
       
-      user_serializer = UserProfileSerializer(filtered_users, many=True, context={'request': request})
-      return Response({
-        "users": user_serializer.data
-      }, status=status.HTTP_200_OK)
+      paginator = Paginator(filtered_users, 20)
+      page = paginator.page(page)
+      response_body = get_page_response(page, request, UserProfileSerializer)
+      return Response(response_body, status=status.HTTP_200_OK)
       
     elif query_type == 'media':
       if query is None or len(query) == 0:
-        return Response({
-          "media": []
-        }, status=status.HTTP_200_OK)
+        return Response(empty_response, status=status.HTTP_200_OK)
       
       # Search post by post content
-      filtered_posts = Post.objects.filter(content__icontains=query)
+      filtered_posts = Post.objects.filter(content__icontains=query).filter(created_at__lte=timestamp)
       filtered_media = []
       
       for post in filtered_posts:
@@ -92,10 +85,12 @@ class SearchAPIView(GenericAPIView):
             break
         if len(filtered_media) == 20:
           break
+        
+      paginator = Paginator(filtered_media, 20)
+      page = paginator.page(page)
+      response_body = get_page_response(page, request)
       
-      return Response({
-        "media": filtered_media
-      }, status=status.HTTP_200_OK)
+      return Response(response_body, status=status.HTTP_200_OK)
       
     else:
       return Response({
