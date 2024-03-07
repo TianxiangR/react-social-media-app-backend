@@ -3,10 +3,11 @@ from datetime import datetime
 from django.core.paginator import Paginator, Page
 from rest_framework.serializers import Serializer
 from rest_framework.request import Request
-from typing import Optional
+from typing import Optional, Union
 import math
+from datetime import timezone
 
-def is_valid_utc_timestamp(timestamp: float | int | str):
+def is_valid_utc_timestamp(timestamp: Union[str, float, int]):
     try:
         # Attempt to create a datetime object from the timestamp
         datetime.utcfromtimestamp(float(timestamp))
@@ -15,7 +16,7 @@ def is_valid_utc_timestamp(timestamp: float | int | str):
         return False  # ValueError indicates an invalid timestamp
 
 def add_visit_record(visitor, post):
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     last_visit = VisitRecord.objects.filter(visitor=visitor, post=post).order_by('-created_at').first()
     if last_visit:
       duration = now - last_visit.created_at
