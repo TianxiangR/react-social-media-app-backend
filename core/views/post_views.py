@@ -47,7 +47,7 @@ class PostView(GenericAPIView):
         return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
       timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
       page = request.query_params.get('page', 1)
-      posts = Post.objects.filter(Q(author__followers__follower=request.user) | Q(author=request.user)).order_by('-created_at').filter(created_at__lte=timestamp)
+      posts = Post.objects.order_by('-created_at').filter((Q(author__followers__follower=request.user) | Q(author=request.user)) & Q(created_at__lte=timestamp)).distinct()
       paginator = Paginator(posts, 20)
       current_page = paginator.get_page(page)
       response = get_page_response(current_page, request, AugmentedPostPreviewSerializer)
