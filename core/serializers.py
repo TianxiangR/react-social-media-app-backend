@@ -86,6 +86,7 @@ class PostPreviewSerializer(serializers.Serializer):
     repost_count = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
     view_count = serializers.SerializerMethodField()
+    bookmark_count = serializers.SerializerMethodField()
     bookmarked = serializers.SerializerMethodField()
     
     def get_images(self, obj) -> List[str]:
@@ -106,10 +107,13 @@ class PostPreviewSerializer(serializers.Serializer):
         return obj.likes.count()
     
     def get_view_count(self, obj) -> int:
-        return 0
+        return obj.visits.count()
     
     def get_bookmarked(self, obj) -> bool:
         return obj.bookmarks.filter(user=self.context['request'].user.id).exists()
+    
+    def get_bookmark_count(self, obj) -> int:
+        return obj.bookmarks.count()
     
 class AugmentedPostPreviewSerializer(PostPreviewSerializer):
     repost_parent = PostPreviewSerializer()
