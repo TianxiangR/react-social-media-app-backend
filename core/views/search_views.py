@@ -37,7 +37,7 @@ class SearchAPIView(GenericAPIView):
       if query is None or len(query) == 0:
         return Response(empty_response, status=status.HTTP_200_OK)
       # Search post by post content
-      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query)).filter(created_at__lte=timestamp)
+      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query) | Q(author__username__icontains=query)).filter(created_at__lte=timestamp)
       filtered_posts = sort_posts_by_rating(filtered_posts)
       paginator = Paginator(filtered_posts, 20)
       page = paginator.page(page)
@@ -49,7 +49,7 @@ class SearchAPIView(GenericAPIView):
       if query is None or len(query) == 0:
         return Response(empty_response, status=status.HTTP_200_OK)
       # Search post by post content
-      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query)).filter(created_at__lte=timestamp)
+      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query) | Q(author__username__icontains=query)).filter(created_at__lte=timestamp)
       paginator = Paginator(filtered_posts, 20)
       page = paginator.page(page)
       response_body = get_page_response(page, request, AugmentedPostPreviewSerializer)
