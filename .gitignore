@@ -1,3 +1,5 @@
 .env.local
 
 aws-django-server.pem
+
+**/__pycache__/
