@@ -173,3 +173,6 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=20),
 }
+
+USE_TZ = True
+TIME_ZONE = 'UTC'

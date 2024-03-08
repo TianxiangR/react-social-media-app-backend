@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
 
-class NotificationView(GenericAPIView):
+class NotificationListView(GenericAPIView):
   permission_classes = [IsAuthenticated]
   authentication_classes = [JWTAuthentication]
   serializer_class = NotificationModelSerializer
@@ -29,3 +29,17 @@ class NotificationView(GenericAPIView):
     notifications = Notification.objects.filter(recipient=request.user)
     notifications.delete()
     return Response({'message': 'All notifications deleted'}, status=status.HTTP_200_OK)
+  
+class NotificationView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  serializer_class = NotificationModelSerializer
+  
+  def patch(self, request, notificationId):
+    notification = get_object_or_404(Notification, id=notificationId)
+    if notification.recipient != request.user:
+      return Response({'error': 'You are not authorized to mark this notification as seen'}, status=status.HTTP_403_FORBIDDEN)
+    notification.read = True
+    notification.save()
+    serializer = NotificationSerializer(notification, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)

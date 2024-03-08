@@ -88,6 +88,7 @@ class PostPreviewSerializer(serializers.Serializer):
     view_count = serializers.SerializerMethodField()
     bookmark_count = serializers.SerializerMethodField()
     bookmarked = serializers.SerializerMethodField()
+    reposted = serializers.SerializerMethodField()
     
     def get_images(self, obj) -> List[str]:
         images = PostImage.objects.filter(post=obj)
@@ -115,10 +116,12 @@ class PostPreviewSerializer(serializers.Serializer):
     def get_bookmark_count(self, obj) -> int:
         return obj.bookmarks.count()
     
+    def get_reposted(self, obj) -> bool:
+        return obj.reposts.filter(author=self.context['request'].user.id).exists()
+    
 class AugmentedPostPreviewSerializer(PostPreviewSerializer):
     repost_parent = PostPreviewSerializer()
     reply_parent = PostPreviewSerializer()
-    
     
 class PostLikeModelSerializer(serializers.ModelSerializer):
     class Meta:
@@ -127,12 +130,12 @@ class PostLikeModelSerializer(serializers.ModelSerializer):
         
 
 class PostDetailSerializer(AugmentedPostPreviewSerializer):
-    replies = serializers.SerializerMethodField()
+    reply_parent = serializers.SerializerMethodField()
     
-    def get_replies(self, obj):
-        replies = obj.replies.all()
-        serializer = PostPreviewSerializer(replies, many=True, context=self.context)
-        return serializer.data
+    def get_reply_parent(self, obj):
+        if obj.reply_parent:
+            return PostDetailSerializer(obj.reply_parent, context=self.context).data
+        return None
     
 class BookmarkSerializer(serializers.ModelSerializer):
     class Meta:

@@ -146,6 +146,74 @@ class PostDetailView(GenericAPIView):
       post.delete()
       return Response(status=status.HTTP_204_NO_CONTENT)
     
+class PostReplyListView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  lookup_url_kwarg = 'postId'
+  queryset = Post.objects.all()
+  serializer_class = AugmentedPostPreviewSerializer
+  
+  def get(self, request, postId):
+      post = self.get_object()
+      page = request.query_params.get('page', 1)
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      replies = post.replies.all().filter(created_at__lte=timestamp)
+      reply_list = list(replies)
+      reply_list_len = len(reply_list)
+      
+      for i in range(reply_list_len):
+        reply = reply_list[i]
+        next_reply = reply.replies.all().filter(created_at__lte=timestamp).order_by('-created_at').first()
+        while next_reply:
+          reply_list.append(next_reply)
+          next_reply = next_reply.replies.all().filter(created_at__lte=timestamp).order_by('-created_at').first()
+      reply_list.sort(key=lambda reply: reply.created_at, reverse=True)
+      paginator = Paginator(reply_list, 20)
+      current_page = paginator.get_page(page)
+      response = get_page_response(current_page, request, self.serializer_class)
+      return Response(response, status=status.HTTP_200_OK)
+    
+  def post(self, request, postId):
+    parent_post = get_object_or_404(Post, id=postId)
+  
+    data = request.POST
+    images = request.FILES.getlist('images')
+
+    data = dict(data)
+    
+    if data.get('content') is not None and len(data.get('content')) != 0:
+      data['content'] = data['content'][0]
+    
+    data['author'] = request.user.id
+    
+    serializer = PostSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    post = serializer.save()
+    
+    for image in images:
+        PostImage.objects.create(post=post, image=image)
+        
+    post.reply_parent = parent_post
+    post.save()
+    
+    if parent_post.author != request.user:
+      notification = {
+        'recipient': parent_post.author.id,
+        'type': 'reply',
+        'reply': post.id,
+      }
+      
+      noti_serializer = NotificationModelSerializer(data=notification)
+      noti_serializer.is_valid(raise_exception=True)
+      noti_serializer.save()
+    add_visit_record(request.user, parent_post)
+    serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
+    
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
 
 class PostLikeView(GenericAPIView):
   permission_classes = [IsAuthenticated]
@@ -230,51 +298,6 @@ class BookmarkListView(GenericAPIView):
       response = get_page_response(paginator.get_page(page), request, AugmentedPostPreviewSerializer)
       return Response(response, status=status.HTTP_200_OK)
 
-
-class PostReplyView(GenericAPIView):
-  permission_classes = [IsAuthenticated]
-  authentication_classes = [JWTAuthentication]
-  serializer_class = PostSerializer
-  lookup_url_kwarg = 'postId'
-  
-  def post(self, request, postId):
-      parent_post = get_object_or_404(Post, id=postId)
-    
-      data = request.POST
-      images = request.FILES.getlist('images')
-
-      data = dict(data)
-      
-      if data.get('content') is not None and len(data.get('content')) != 0:
-        data['content'] = data['content'][0]
-      
-      data['author'] = request.user.id
-      
-      serializer = self.serializer_class(data=data)
-      serializer.is_valid(raise_exception=True)
-      post = serializer.save()
-      
-      for image in images:
-          PostImage.objects.create(post=post, image=image)
-          
-      post.reply_parent = parent_post
-      post.save()
-      
-      if parent_post.author != request.user:
-        notification = {
-          'recipient': parent_post.author.id,
-          'type': 'reply',
-          'reply': post.id,
-        }
-        
-        noti_serializer = NotificationModelSerializer(data=notification)
-        noti_serializer.is_valid(raise_exception=True)
-        noti_serializer.save()
-      add_visit_record(request.user, parent_post)
-      serializer = AugmentedPostPreviewSerializer(post, context={'request': request})
-      
-      return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
 class PostRepostView(GenericAPIView):
   permission_classes = [IsAuthenticated]
   authentication_classes = [JWTAuthentication]
@@ -337,4 +360,19 @@ class TopRatedPostListView(GenericAPIView):
       response = get_page_response(paginator.page(page), request, AugmentedPostPreviewSerializer)
       return Response(response, status=status.HTTP_200_OK)
     
+
+class FollowingPostListView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  
+  def get(self, request):
+      timestamp_str = request.query_params.get('timestamp', None)
+      if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+      page = request.query_params.get('page', 1)
+      posts = Post.objects.filter((Q(author__followers__follower=request.user) | Q(author=request.user)) & Q(created_at__lte=timestamp)).distinct()
+      paginator = Paginator(posts, 20)
+      response = get_page_response(paginator.page(page), request, AugmentedPostPreviewSerializer)
+      return Response(response, status=status.HTTP_200_OK)
       

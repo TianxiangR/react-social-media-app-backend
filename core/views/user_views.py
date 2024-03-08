@@ -6,8 +6,12 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from ..serializers import CurrentUserSerializer, UserProfileSerializer, NotificationModelSerializer
-
-from core.models import User, Follow
+from django.utils import timezone
+from datetime import datetime
+from ..utils import is_valid_utc_timestamp, get_page_response
+from ..models import User, Follow
+from django.db.models import Q
+from django.core.paginator import Paginator
 
 class CurrentUser(GenericAPIView):
     permission_classes = [IsAuthenticated]
@@ -72,7 +76,7 @@ class PublicQueryUser(GenericAPIView):
 class UserFollowView(GenericAPIView):
   permission_classes = [IsAuthenticated]
   authentication_classes = [JWTAuthentication]
-  lookjup_url_kwarg = 'username'
+  lookup_url_kwarg = 'username'
   
   def post(self, request, username):
     user = get_object_or_404(User, username=username)
@@ -106,5 +110,47 @@ class UserFollowView(GenericAPIView):
     
     serializer = UserProfileSerializer(user, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
+  
+class UserFollowerListView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  lookup_url_kwarg = 'username'
+  
+  def get(self, request, username):
+    user = get_object_or_404(User, username=username)
+    page = request.query_params.get('page', 1)
+    timestamp_str = request.query_params.get('timestamp', None)
+    if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+      return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+    timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+    follows = Follow.objects.filter(following=user, created_at__lt=timestamp).order_by('-created_at')
+    followers = [follow.follower for follow in follows]
+    paginator = Paginator(followers, 20)
+    current_page = paginator.get_page(page)
+    response = get_page_response(current_page, request, UserProfileSerializer)
+    return Response(response, status=status.HTTP_200_OK)
+  
+
+class UserFollowingListView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  lookup_url_kwarg = 'username'
+  
+  def get(self, request, username):
+    user = get_object_or_404(User, username=username)
+    page = request.query_params.get('page', 1)
+    timestamp_str = request.query_params.get('timestamp', None)
+    if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+      return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+    timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+    follows = Follow.objects.filter(follower=user, created_at__lt=timestamp).order_by('-created_at')
+    following = [follow.following for follow in follows]
+    paginator = Paginator(following, 20)
+    current_page = paginator.get_page(page)
+    response = get_page_response(current_page, request, UserProfileSerializer)
+    return Response(response, status=status.HTTP_200_OK)
+    
+    
+    
 
     
