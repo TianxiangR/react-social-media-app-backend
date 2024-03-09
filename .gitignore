@@ -3,3 +3,5 @@
 aws-django-server.pem
 
 **/__pycache__/
+
+/media/
