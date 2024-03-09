@@ -82,7 +82,7 @@ class PostPreviewSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     images = serializers.SerializerMethodField()
     liked = serializers.SerializerMethodField()
-    comment_count = serializers.SerializerMethodField()
+    reply_count = serializers.SerializerMethodField()
     repost_count = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
     view_count = serializers.SerializerMethodField()
@@ -98,7 +98,7 @@ class PostPreviewSerializer(serializers.Serializer):
     def get_liked(self, obj) -> bool:
         return obj.likes.filter(user=self.context['request'].user.id).exists()
 
-    def get_comment_count(self, obj) -> int:
+    def get_reply_count(self, obj) -> int:
         return obj.replies.count()
     
     def get_repost_count(self, obj) -> int:
