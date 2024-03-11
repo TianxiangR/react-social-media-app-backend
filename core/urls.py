@@ -26,5 +26,7 @@ urlpatterns = [
     path('bookmarks/', post_views.BookmarkListView.as_view()),
     path('debug/', debug_views.DebugView.as_view()),
     path('top-rated/', post_views.TopRatedPostListView.as_view()),
+    path('top-rated-range/', post_views.TopRatedPostRangeView.as_view()),
     path('following-posts/', post_views.FollowingPostListView.as_view()),
+    path('following-posts-range/', post_views.FollowingPostRangeView.as_view()),
 ]

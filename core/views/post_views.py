@@ -360,12 +360,28 @@ class TopRatedPostListView(GenericAPIView):
       response = get_page_response(paginator.page(page), request, AugmentedPostPreviewSerializer)
       return Response(response, status=status.HTTP_200_OK)
     
+class TopRatedPostRangeView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  
+  def get(self, request):
+      from_timestamp_str = request.query_params.get('from', None)
+      to_timestamp_str = request.query_params.get('to', None)
+      if from_timestamp_str is None or to_timestamp_str is None or not is_valid_utc_timestamp(from_timestamp_str) or not is_valid_utc_timestamp(to_timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+      
+      from_timestamp = datetime.utcfromtimestamp(float(from_timestamp_str))
+      to_timestamp = datetime.utcfromtimestamp(float(to_timestamp_str))
+      posts = Post.objects.filter(created_at__gt=from_timestamp).filter(created_at__lte=to_timestamp)
+      posts = sort_posts_by_rating(posts)
+      return Response(AugmentedPostPreviewSerializer(posts, many=True, context={'request': request}).data, status=status.HTTP_200_OK)
+    
 
 class FollowingPostListView(GenericAPIView):
   permission_classes = [IsAuthenticated]
   authentication_classes = [JWTAuthentication]
   
-  def get(self, request):
+  def get(self, request):    
       timestamp_str = request.query_params.get('timestamp', None)
       if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
         return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
@@ -375,4 +391,18 @@ class FollowingPostListView(GenericAPIView):
       paginator = Paginator(posts, 20)
       response = get_page_response(paginator.page(page), request, AugmentedPostPreviewSerializer)
       return Response(response, status=status.HTTP_200_OK)
+
+class FollowingPostRangeView(GenericAPIView):
+  permission_classes = [IsAuthenticated]
+  authentication_classes = [JWTAuthentication]
+  
+  def get(self, request):
+      from_timestamp_str = request.query_params.get('from', None)
+      to_timestamp_str = request.query_params.get('to', None)
+      if from_timestamp_str is None or to_timestamp_str is None or not is_valid_utc_timestamp(from_timestamp_str) or not is_valid_utc_timestamp(to_timestamp_str):
+        return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
       
+      from_timestamp = datetime.utcfromtimestamp(float(from_timestamp_str))
+      to_timestamp = datetime.utcfromtimestamp(float(to_timestamp_str))
+      posts = Post.objects.filter((Q(author__followers__follower=request.user) | Q(author=request.user)) & Q(created_at__gt=from_timestamp) & Q(created_at__lte=to_timestamp)).distinct()
+      return Response(AugmentedPostPreviewSerializer(posts, many=True, context={'request': request}).data, status=status.HTTP_200_OK)

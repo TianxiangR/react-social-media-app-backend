@@ -7,6 +7,10 @@ from ..serializers import NotificationModelSerializer, NotificationSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Q
+from django.utils import timezone
+from datetime import datetime
+from ..utils import is_valid_utc_timestamp, get_page_response
+from django.core.paginator import Paginator
 
 class NotificationListView(GenericAPIView):
   permission_classes = [IsAuthenticated]
@@ -14,9 +18,24 @@ class NotificationListView(GenericAPIView):
   serializer_class = NotificationModelSerializer
   
   def get(self, request):
-    notifications = Notification.objects.filter(recipient=request.user).order_by('-created_at')
-    serializer = NotificationSerializer(notifications, many=True, context={'request': request})
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    prefetch = request.query_params.get('prefetch', 'false')
+    
+    if prefetch == 'true':
+      unread_count = Notification.objects.filter(recipient=request.user, read=False).count()
+      return Response({
+        "count": unread_count
+      }, status=status.HTTP_200_OK)
+    
+    page = request.query_params.get('page', 1)
+    timestamp_str = request.query_params.get('timestamp', None)
+    if timestamp_str is not None and not is_valid_utc_timestamp(timestamp_str):
+      return Response({'error': 'Invalid timestamp'}, status=status.HTTP_400_BAD_REQUEST)
+    timestamp = timezone.now() if timestamp_str is None else datetime.utcfromtimestamp(float(timestamp_str))
+    notifications = Notification.objects.filter(recipient=request.user).filter(created_at__lte=timestamp).order_by('-created_at')
+    paginator = Paginator(notifications, 20)
+    page = paginator.page(page)
+    response = get_page_response(page, request, NotificationSerializer)
+    return Response(response, status=status.HTTP_200_OK)
   
   def patch(self, request):
     notifications = Notification.objects.filter(recipient=request.user)
@@ -43,3 +62,15 @@ class NotificationView(GenericAPIView):
     notification.save()
     serializer = NotificationSerializer(notification, context={'request': request})
     return Response(serializer.data, status=status.HTTP_200_OK)
+  
+
+# class NotificationPrefetch(GenericAPIView):
+#   permission_classes = [IsAuthenticated]
+#   authentication_classes = [JWTAuthentication]
+#   serializer_class = NotificationModelSerializer
+  
+#   def get(self, request):
+#     unread_count = Notification.objects.filter(recipient=request.user, is_seen=False).count()
+#     return Response({
+#       "count": unread_count
+#       }, status=status.HTTP_200_OK)
