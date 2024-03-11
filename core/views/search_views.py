@@ -74,7 +74,7 @@ class SearchAPIView(GenericAPIView):
         return Response(empty_response, status=status.HTTP_200_OK)
       
       # Search post by post content
-      filtered_posts = Post.objects.filter(content__icontains=query).filter(created_at__lte=timestamp)
+      filtered_posts = Post.objects.filter(Q(content__icontains=query) | Q(author__name__icontains=query) | Q(author__username__icontains=query)).filter(created_at__lte=timestamp)
       filtered_media = []
       
       for post in filtered_posts:
