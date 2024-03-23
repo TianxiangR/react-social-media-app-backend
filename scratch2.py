@@ -8,3 +8,4 @@ for word in words:
     match = re.match(pattern, word)
     if match:
         print(match.group(1))
+        
