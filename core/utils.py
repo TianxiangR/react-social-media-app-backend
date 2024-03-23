@@ -6,6 +6,7 @@ from rest_framework.request import Request
 from typing import Optional, Union
 import math
 from datetime import timezone
+import re
 
 def is_valid_utc_timestamp(timestamp: Union[str, float, int]):
     try:
@@ -98,4 +99,7 @@ def sort_posts_by_rating(posts):
     
     return [meta['post'] for meta in sorted_post_meta]
       
-      
+def is_hashtag(text: str)->bool:
+    pattern = r'^#\b[A-Za-z][A-Za-z0-9]*\b$'
+    match = re.match(pattern, text)
+    return match is not None

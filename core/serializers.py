@@ -1,7 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
-from .models import Post, User, PostImage, PostLike, Bookmark, Notification
+from .models import Post, User, PostImage, PostLike, Bookmark, Notification, HashTag, Log
 from typing import *
+import re
+from .utils import is_hashtag
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -73,8 +75,47 @@ class PostSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['id', 'author', 'content', 'created_at', 'reply_parent', 'repost_parent']
+    
+    def create(self, validated_data):
+        post = super().create(validated_data)
         
-
+        # extract hashtags from content
+        content = validated_data['content']
+        seen = set()
+        words = content.split()
+        
+        for word in words:
+            if is_hashtag(word):
+                tag_name = word[1:]
+                if tag_name not in seen:
+                    tag, _ = HashTag.objects.get_or_create(name=tag_name)
+                    tag.posts.add(post)
+                    seen.add(tag_name)
+                    tag.save()
+                    
+        
+        return post
+    
+    def update(self, instance, validated_data):
+        instance.content = validated_data.get('content', instance.content)
+        new_tags = set()
+        content = validated_data['content']
+        words = content.split()
+        for word in words:
+            if is_hashtag(word):
+                tag_name = word[1:]
+                new_tags.add(tag_name)
+                tag, _ = HashTag.objects.get_or_create(name=tag_name)
+                tag.posts.add(instance)
+                tag.save()
+        
+        for tag in instance.hashtags.all():
+            if tag.name not in new_tags:
+                tag.posts.remove(instance)
+                tag.save()
+            
+        
+    
 class PostPreviewSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     author = UserProfileSerializer()
@@ -180,4 +221,17 @@ class NotificationSerializer(serializers.Serializer):
             return serializer.data
         else:
             return None
-        
+
+class HashtagSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=1000)
+    related_post_count = serializers.SerializerMethodField()
+    
+    def get_related_post_count(self, obj):
+        return obj.posts.count()
+
+
+class LogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Log
+        fields = '__all__'
+    

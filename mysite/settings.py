@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'core',
     "corsheaders",
     "whitenoise.runserver_nostatic",
+    'django.contrib.postgres'
 ]
 
 MIDDLEWARE = [

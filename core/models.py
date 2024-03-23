@@ -29,7 +29,7 @@ class User(AbstractUser):
 class Post(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posts')
-    content = models.TextField(blank=True)
+    content = models.TextField(blank=True, max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
     reply_parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
     repost_parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='reposts')
@@ -62,6 +62,14 @@ class PostLike(models.Model):
         
     def __str__(self):
         return f'{self.user} likes {self.post}'
+    
+class HashTag(models.Model):
+    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+    name = models.TextField(blank=False, max_length=1000, unique=True)
+    posts = models.ManyToManyField(Post, related_name='hashtags')
+    
+    def __str__(self):
+        return "<" + "hashtag: " + self.name + ">"
     
 class Bookmark(models.Model):
     id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
@@ -120,3 +128,18 @@ class VisitRecord(models.Model):
     visitor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='visits')
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='visits')
     created_at = models.DateTimeField(auto_now_add=True)
+    
+class Visitor(models.Model):
+    visitorId = models.TextField(blank=False, null=False, unique=True)
+
+class Log(models.Model):
+    message = models.TextField(blank=False, null=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    visitor = models.ForeignKey(Visitor, on_delete=models.CASCADE, related_name='logs')
+    meta = models.JSONField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return self.message[:20].replace('\n', ' ')
